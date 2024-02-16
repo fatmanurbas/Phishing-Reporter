@@ -1,6 +1,5 @@
 ﻿/*
- * Developer: Abdulla Albreiki
- * Github: https://github.com/0dteam
+
  * licensed under the GNU General Public License v3.0
  */
 

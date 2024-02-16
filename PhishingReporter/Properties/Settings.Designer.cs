@@ -25,66 +25,6 @@ namespace PhishingReporter.Properties {
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("fatmanurbas1004@gmail.com")]
-        public string infosec_email {
-            get {
-                return ((string)(this["infosec_email"]));
-            }
-            set {
-                this["infosec_email"] = value;
-            }
-        }
-        
-        [global::System.Configuration.UserScopedSettingAttribute()]
-        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("http://gophish.example.com")]
-        public string gophish_url {
-            get {
-                return ((string)(this["gophish_url"]));
-            }
-            set {
-                this["gophish_url"] = value;
-            }
-        }
-        
-        [global::System.Configuration.UserScopedSettingAttribute()]
-        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("80")]
-        public string gophish_listener_port {
-            get {
-                return ((string)(this["gophish_listener_port"]));
-            }
-            set {
-                this["gophish_listener_port"] = value;
-            }
-        }
-        
-        [global::System.Configuration.UserScopedSettingAttribute()]
-        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("X-GOPHISH-AJSMN")]
-        public string gophish_custom_header {
-            get {
-                return ((string)(this["gophish_custom_header"]));
-            }
-            set {
-                this["gophish_custom_header"] = value;
-            }
-        }
-        
-        [global::System.Configuration.UserScopedSettingAttribute()]
-        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("Plugin Support <support@example.com>")]
-        public string support_email {
-            get {
-                return ((string)(this["support_email"]));
-            }
-            set {
-                this["support_email"] = value;
-            }
-        }
-        
-        [global::System.Configuration.UserScopedSettingAttribute()]
-        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         [global::System.Configuration.DefaultSettingValueAttribute("V1.1")]
         public string plugin_version {
             get {
@@ -104,18 +44,6 @@ namespace PhishingReporter.Properties {
             }
             set {
                 this["suspecious_reports_counter"] = value;
-            }
-        }
-        
-        [global::System.Configuration.UserScopedSettingAttribute()]
-        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("0")]
-        public int gophish_reports_counter {
-            get {
-                return ((int)(this["gophish_reports_counter"]));
-            }
-            set {
-                this["gophish_reports_counter"] = value;
             }
         }
     }

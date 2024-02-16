@@ -1,9 +1,7 @@
 ﻿/*
- * Developer: Abdulla Albreiki
- * Github: https://github.com/0dteam
- * licensed under the GNU General Public License v3.0
+  * licensed under the GNU General Public License v3.0
  */
- 
+
 using Microsoft.Office.Core;
 using PhishingReporter.Properties;
 using System;
@@ -20,24 +18,10 @@ using Outlook = Microsoft.Office.Interop.Outlook;
 using System.Security.Cryptography;
 using HtmlAgilityPack;
 using System.Collections.Generic;
-
-// TODO:  Follow these steps to enable the Ribbon (XML) item:
-
-// 1: Copy the following code block into the ThisAddin, ThisWorkbook, or ThisDocument class.
-
-//  protected override Microsoft.Office.Core.IRibbonExtensibility CreateRibbonExtensibilityObject()
-//  {
-//      return new Ribbon();
-//  }
-
-// 2. Create callback methods in the "Ribbon Callbacks" region of this class to handle user
-//    actions, such as clicking a button. Note: if you have exported this Ribbon from the Ribbon designer,
-//    move your code from the event handlers to the callback methods and modify the code to work with the
-//    Ribbon extensibility (RibbonX) programming model.
-
-// 3. Assign attributes to the control tags in the Ribbon XML file to identify the appropriate callback methods in your code.  
-
-// For more information, see the Ribbon XML documentation in the Visual Studio Tools for Office Help.
+using Newtonsoft.Json;
+using System.Text;
+using System.Net.Http;
+using System.Threading.Tasks;
 
 
 namespace PhishingReporter
@@ -59,23 +43,35 @@ namespace PhishingReporter
         // Functions
         public void reportPhishing(Office.IRibbonControl control)
         {
-            var areYouSure = MessageBox.Show("Do you want to report this email to the Information Security Team as a potential phishing attempt?", "Are you sure?", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-            if(areYouSure == DialogResult.Yes)
+            string myDocument = "";
+            string value = "Add a note";
+            if (Tmp.InputBox("Phishing", "Do you want to report this email as a potential phishing attempt?", ref value) == DialogResult.OK)
             {
-                reportPhishingEmailToSecurityTeam(control);
-            }
+                if(value != "Add a note")
+                {
+                    myDocument = value;
+                }
+                try
+                {
+                    // Fonksiyon çağrısı burada yapılır
+                    reportPhishingEmailToSecurityTeamAsync(control, myDocument);
+                }
+                catch (System.Exception ex)
+                {
+                    MessageBox.Show("An error occured with the function: " + ex.Message);
+                }
+               
+            }         
         }
 
-        /*
-         *  Helper functions 
-         */
-
-        private void reportPhishingEmailToSecurityTeam(IRibbonControl control)
+        private void reportPhishingEmailToSecurityTeamAsync(IRibbonControl control, string note)
         {
+
+            Dictionary<string, string> senderMails = new Dictionary<string, string>();
+
 
             Selection selection = Globals.ThisAddIn.Application.ActiveExplorer().Selection;
             string reportedItemType = "NaN"; // email, contact, appointment ...etc
-            string reportedItemHeaders = "NaN";
 
             if(selection.Count < 1) // no item is selected
             {
@@ -116,81 +112,46 @@ namespace PhishingReporter
                     MailItem mailItem = (reportedItemType == "MailItem") ? selection[1] as MailItem : null; // If the selected item is an email
 
                     MailItem reportEmail = (MailItem)Globals.ThisAddIn.Application.CreateItem(OlItemType.olMailItem);
-                    reportEmail.Attachments.Add(selection[1] as Object);
+ 
 
-                    try
+                    senderMails.Add("fromMail", mailItem.SenderEmailAddress);
+                    senderMails.Add("userMail", GetCurrentUserInfos());
+                    senderMails.Add("userNote", note);
+                    senderMails.Add("htmlBody", mailItem.HTMLBody);
+
+                    using (var client1 = new HttpClient())
                     {
+                        var endpoint = new Uri("https://m365.phishup.co/mail-provider-auth-service/microsoft365/user-mail-feedback");
 
-                        reportEmail.To = Properties.Settings.Default.infosec_email;
-                        reportEmail.Subject = (reportedItemType == "MailItem") ? "[POTENTIAL PHISH] " + mailItem.Subject : "[POTENTIAL PHISH] " + reportedItemType; // If reporting email, include subject; otherwise, state the type of the reported item
+                        string json = JsonConvert.SerializeObject(senderMails);
+                        var payload = new StringContent(json, Encoding.UTF8, "application/json");
 
-                        // Get Email Headers
-                        if (reportedItemType == "MailItem")
+                        try
                         {
-                            reportedItemHeaders = mailItem.HeaderString();
+                           var response = client1.PostAsync(endpoint, payload).Result;
+                            response.EnsureSuccessStatusCode(); 
+                            string result = response.Content.ReadAsStringAsync().Result;
+
+                            
+                            MessageBox.Show("Thank you for reporting.", "Thank you");
                         }
-                        else
+                        catch (HttpRequestException ex)
                         {
-                            reportedItemHeaders = "Headers were not extracted because the reported item is not an email. It is " + reportedItemType;
+                           
+                            MessageBox.Show($"HTTP request failed: {ex.Message}", "Error");
                         }
-
-                        // Check if the email is a simulated phishing campaign by Information Security Team
-                        string simulatedPhishingURL = GoPhishIntegration.setReportURL(reportedItemHeaders);
-
-                        if (simulatedPhishingURL != "NaN")
+                        catch (TaskCanceledException ex)
                         {
-                            string simulatedPhishingResponse = GoPhishIntegration.sendReportNotificationToServer(simulatedPhishingURL);
-                            // DEBUG: to check if reporting email reaches GoPhish Portal
-                            // MessageBox.Show(simulatedPhishingURL + " --- " + simulatedPhishingResponse);
-
-                            // Update GoPhish Campaigns Reported counter
-                            Properties.Settings.Default.gophish_reports_counter++;
-
-                            // Thanks
-                            MessageBox.Show("Good job! You have reported a simulated phishing campaign sent by the Information Security Team.", "We have a winner!");
+                            
+                            MessageBox.Show($"Task was canceled: {ex.Message}", "Error");
                         }
-                        else
+                        catch (System.Exception ex)
                         {
-
-                            // Update Suspecious Emails Reported counter
-                            Properties.Settings.Default.suspecious_reports_counter++;
-
-                            // Prepare the email body
-                            reportEmail.Body = GetCurrentUserInfos();
-                            reportEmail.Body += "\n";
-                            reportEmail.Body += GetBasicInfo(mailItem);
-                            reportEmail.Body += "\n";
-                            reportEmail.Body += GetURLsAndAttachmentsInfo(mailItem);
-                            reportEmail.Body += "\n";
-                            reportEmail.Body += "---------- Headers ----------";
-                            reportEmail.Body += "\n" + reportedItemHeaders;
-                            reportEmail.Body += "\n";
-                            reportEmail.Body += GetPluginDetails() + "\n\n";
-
-                            reportEmail.Save();
-                            //reportEmail.Display(); // Helps in debugginng
-                            reportEmail.Send(); // Automatically send the email
-
-                            // Enable if you want a second popup for confirmation
-                            // MessageBox.Show("Thank you for reporting. We will review this report soon. - Information Security Team", "Thank you");
+                            
+                            MessageBox.Show($"An error occurred: {ex.Message}", "Error");
                         }
-
-                        // Delete the reported email
-                        mailItem.Delete();
-
                     }
-                    catch (System.Exception ex)
-                    {
-                        MessageBox.Show("There was an error! An automatic email was sent to the support to resolve the issue.", "Do not worry");
-
-                        MailItem errorEmail = (MailItem)Globals.ThisAddIn.Application.CreateItem(OlItemType.olMailItem);
-                        errorEmail.To = Properties.Settings.Default.support_email;
-                        errorEmail.Subject = "[Outlook Addin Error]";
-                        errorEmail.Body = ("Addin error message: " + ex);
-                        errorEmail.Save();
-                        //errorEmail.Display(); // Helps in debugginng
-                        errorEmail.Send(); // Automatically send the email
-                    }
+                  
                 }
                 else
                 {
@@ -199,27 +160,11 @@ namespace PhishingReporter
             }
         }
 
-        public String GetBasicInfo(MailItem mailItem)
-        {
-            Outlook.MAPIFolder parentFolder = mailItem.Parent as Outlook.MAPIFolder;
-            string FolderLocation = parentFolder.FolderPath;
-            string basicInfo = "---------- Basic Info ----------";
-            basicInfo += "\n - Reported from: \"" + FolderLocation + "\" Folder";
-            basicInfo += "\n - OS: " + Environment.OSVersion + " " + (Environment.Is64BitOperatingSystem ? "(64bit)" : "(32bit)");
-            basicInfo += "\n - Agent: " + Globals.ThisAddIn.Application.Name + " "  + Globals.ThisAddIn.Application.Version;
-            basicInfo += "\n - Suspecious emails reported: " + Properties.Settings.Default.suspecious_reports_counter;
-            basicInfo += "\n - GoPhish campaigns reported: " + Properties.Settings.Default.gophish_reports_counter;
-            basicInfo += "\n";
-            return basicInfo;
-        }
 
 
         public String GetCurrentUserInfos()
         {
-            string str = "---------- User Information ----------";
-            str += "\n - Domain:" + Environment.UserDomainName;
-            str += "\n - Username:" + Environment.UserName;
-            str += "\n - Machine name:" + Environment.MachineName;
+            string str = "";
 
             Outlook.AddressEntry addrEntry = Globals.ThisAddIn.Application.Session.CurrentUser.AddressEntry;
             if (addrEntry.Type == "EX")
@@ -229,115 +174,15 @@ namespace PhishingReporter
                     AddressEntry.GetExchangeUser();
                 if (currentUser != null)
                 {
-                    str += "\n - Name: " + currentUser.Name;
-                    str += "\n - STMP address: " + currentUser.PrimarySmtpAddress;
-                    str += "\n - Title: " + currentUser.JobTitle;
-                    str += "\n - Department: " + currentUser.Department;
-                    str += "\n - Location: " + currentUser.OfficeLocation;
-                    str += "\n - Business phone: " + currentUser.BusinessTelephoneNumber;
-                    str += "\n - Mobile phone: " + currentUser.MobileTelephoneNumber;
-
+                    str += currentUser.PrimarySmtpAddress;
                 }
             }
-            return str + "\n";
-        }
-
-        public String GetURLsAndAttachmentsInfo(MailItem mailItem)
-        {
-            string urls_and_attachments = "---------- URLs and Attachments ----------";
-
-            var domainsInEmail = new List<string>();
-
-            var emailHTML = mailItem.HTMLBody;
-            var doc = new HtmlAgilityPack.HtmlDocument();
-            doc.LoadHtml(emailHTML);
-
-            // extracting all links
-            var urlsText = "";
-            var urlNodes = doc.DocumentNode.SelectNodes("//a[@href]");
-            if(urlNodes != null)
-            {
-                urlsText = "\n\n # of URLs: " + doc.DocumentNode.SelectNodes("//a[@href]").Count;
-                foreach (HtmlNode link in doc.DocumentNode.SelectNodes("//a[@href]"))
-                {
-                    HtmlAttribute att = link.Attributes["href"];
-                    if (att.Value.Contains("a"))
-                    {
-                        urlsText += "\n --> URL: " + att.Value.Replace(":", "[:]");
-                        // Domain Extraction
-                        try
-                        {
-                            domainsInEmail.Add(new Uri(att.Value).Host);
-                        }
-                        catch (UriFormatException)
-                        {
-                            // Try to process URL as email address. Example -> <a href="mailto:ask@0d.ae">...etc
-                            String emailAtChar = "@";
-                            int ix = att.Value.IndexOf(emailAtChar);
-                            if (ix != -1)
-                            {
-                                string emailDomain = att.Value.Substring(ix + emailAtChar.Length);
-                                try
-                                {
-                                    domainsInEmail.Add(new Uri(emailDomain).Host);
-                                }
-                                catch (UriFormatException)
-                                {
-                                    // if it fails again, ignore domain extraction
-                                    Console.WriteLine("Bad url: {0}", emailDomain);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            else
-                urlsText = "\n\n # of URLs: 0";
-
-            // Get domains
-            domainsInEmail = domainsInEmail.Distinct().ToList();
-            urls_and_attachments += "\n # of unique Domains: " + domainsInEmail.Count;
-            foreach (string item in domainsInEmail)
-            {
-                urls_and_attachments += "\n --> Domain: " + item.Replace(":", "[:]");
-            }
-
-            // Add Urls
-            urls_and_attachments += urlsText;
-
-            urls_and_attachments += "\n\n # of Attachments: " + mailItem.Attachments.Count;
-            foreach (Attachment a in mailItem.Attachments)
-            {
-                // Save attachment as txt file temporarily to get its hashes (saves under User's Temp folder)
-                var filePath = Environment.ExpandEnvironmentVariables(@"%TEMP%\Outlook-Phishaddin-" + a.DisplayName + ".txt");
-                a.SaveAsFile(filePath);
-
-                string fileHash_md5 = "";
-                string fileHash_sha256 = "";
-                if (File.Exists(filePath))
-                {
-                    fileHash_md5 = CalculateMD5(filePath);
-                    fileHash_sha256 = GetHashSha256(filePath);
-                    // Delete file after getting the hashes
-                    File.Delete(filePath);
-                }
-                urls_and_attachments += "\n --> Attachment: " + a.FileName + " (" + a.Size + " bytes)\n\t\tMD5: " + fileHash_md5 + "\n\t\tSha256: " + fileHash_sha256 + "\n";
-            }
-            return urls_and_attachments;
+            return str;
         }
 
 
 
-        public String GetPluginDetails()
-        {
-            string pluginDetails = "---------- Report Phishing Plugin ----------";
-            pluginDetails += "\n - Version: " + Properties.Settings.Default.plugin_version;
-            pluginDetails += "\n - Usage: Report phishing emails to the Information Security Team.";
-            pluginDetails += "\n - Support: " + Properties.Settings.Default.support_email;
-            
-            pluginDetails += "\n - Developer: Abdulla Albreiki (aalbraiki@hotmail.com)"; // You may delete this line if you like :)
-            return pluginDetails;
-        }
+
 
         #region IRibbonExtensibility Members
 
@@ -405,6 +250,8 @@ namespace PhishingReporter
 
         #endregion
     }
+
+ 
 
     public static class MailItemExtensions
     {

@@ -4,12 +4,12 @@
     <tabs>
       <!--<tab id="tab1" label="Test">-->
       <tab idMso="TabMail">
-        <group id="group1" label="InfoSec">
+        <group id="group1" label="PHISUP">
           <button size="large" getImage="getGroup1Image" showImage="true" id="reportPhishingBtn" onAction="reportPhishing" label="Report Phishing" />
         </group>
       </tab>
       <tab idMso="TabReadMessage">
-        <group id="group2" label="InfoSec">
+        <group id="group2" label="PHISUP">
           <button size="large" getImage="getGroup1Image" showImage="true" id="reportPhishingBtn2" onAction="reportPhishing" label="Report Phishing" />
         </group>
       </tab>

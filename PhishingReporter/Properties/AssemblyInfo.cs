@@ -1,6 +1,4 @@
 ﻿/*
- * Developer: Abdulla Albreiki
- * Github: https://github.com/0dteam
  * licensed under the GNU General Public License v3.0
  */
 
@@ -15,9 +13,9 @@ using System.Security;
 [assembly: AssemblyTitle("Phishing Reporter")]
 [assembly: AssemblyDescription("Official Phishing Reporter plugin for Outlook")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("COMPANYNAME")]
+[assembly: AssemblyCompany("DIATICS")]
 [assembly: AssemblyProduct("Phishing Reporter")]
-[assembly: AssemblyCopyright("Copyright ©  2020")]
+[assembly: AssemblyCopyright("Copyright ©  2024")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 
