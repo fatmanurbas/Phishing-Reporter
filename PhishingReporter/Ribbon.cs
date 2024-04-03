@@ -199,7 +199,7 @@ namespace PhishingReporter
 
                         reportEmail.Save();
                         //reportEmail.Display(); // Helps in debugginng
-                      //  reportEmail.Send(); // Automatically send the email
+                       reportEmail.Send(); // Automatically send the email
                        
 
                         // Enable if you want a second popup for confirmation
