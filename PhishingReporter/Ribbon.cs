@@ -1,5 +1,7 @@
 ﻿/*
-  * licensed under the GNU General Public License v3.0
+ * Developer: Abdulla Albreiki
+ * Github: https://github.com/0dteam
+ * licensed under the GNU General Public License v3.0
  */
 
 using Microsoft.Office.Core;
@@ -19,9 +21,25 @@ using System.Security.Cryptography;
 using HtmlAgilityPack;
 using System.Collections.Generic;
 using Newtonsoft.Json;
-using System.Text;
-using System.Net.Http;
-using System.Threading.Tasks;
+using Microsoft.Office.Tools;
+
+// TODO:  Follow these steps to enable the Ribbon (XML) item:
+
+// 1: Copy the following code block into the ThisAddin, ThisWorkbook, or ThisDocument class.
+
+//  protected override Microsoft.Office.Core.IRibbonExtensibility CreateRibbonExtensibilityObject()
+//  {
+//      return new Ribbon();
+//  }
+
+// 2. Create callback methods in the "Ribbon Callbacks" region of this class to handle user
+//    actions, such as clicking a button. Note: if you have exported this Ribbon from the Ribbon designer,
+//    move your code from the event handlers to the callback methods and modify the code to work with the
+//    Ribbon extensibility (RibbonX) programming model.
+
+// 3. Assign attributes to the control tags in the Ribbon XML file to identify the appropriate callback methods in your code.  
+
+// For more information, see the Ribbon XML documentation in the Visual Studio Tools for Office Help.
 
 
 namespace PhishingReporter
@@ -30,10 +48,13 @@ namespace PhishingReporter
     public class Ribbon : Office.IRibbonExtensibility
     {
         private Office.IRibbonUI ribbon;
-
-        public Ribbon()
+        private ThisAddIn addIn;
+        private Outlook.Application outlookApplication;
+        public Ribbon(Outlook.Application application)
         {
+            this.outlookApplication = application;
         }
+
 
         public Bitmap getGroup1Image(IRibbonControl control)
         {
@@ -43,41 +64,42 @@ namespace PhishingReporter
         // Functions
         public void reportPhishing(Office.IRibbonControl control)
         {
-            string myDocument = "";
+            string userNote = "";
             string value = "Add a note";
-            if (Tmp.InputBox("Phishing", "Do you want to report this email as a potential phishing attempt?", ref value) == DialogResult.OK)
+            if (Tmp.InputBox("Report Mail", "Add some informations about this feedback. This field is optional", ref value) == DialogResult.OK)
             {
-                if(value != "Add a note")
-                {
-                    myDocument = value;
-                }
+                if (value != "Add a note")
+                    userNote = value;
+
                 try
                 {
                     // Fonksiyon çağrısı burada yapılır
-                    reportPhishingEmailToSecurityTeamAsync(control, myDocument);
+                    reportPhishingEmailToSecurityTeam(control, userNote);
                 }
                 catch (System.Exception ex)
                 {
                     MessageBox.Show("An error occured with the function: " + ex.Message);
                 }
-               
-            }         
+
+            }
         }
 
-        private void reportPhishingEmailToSecurityTeamAsync(IRibbonControl control, string note)
+        /*
+         *  Helper functions 
+         */
+
+        private void reportPhishingEmailToSecurityTeam(IRibbonControl control, string note)
         {
-
-            Dictionary<string, string> senderMails = new Dictionary<string, string>();
-
-
+            Dictionary<string, object> senderMails = new Dictionary<string, object>();
             Selection selection = Globals.ThisAddIn.Application.ActiveExplorer().Selection;
             string reportedItemType = "NaN"; // email, contact, appointment ...etc
+            string reportedItemHeaders = "NaN";
 
-            if(selection.Count < 1) // no item is selected
+            if (selection.Count < 1) // no item is selected
             {
                 MessageBox.Show("Select an email before reporting.", "Error");
             }
-            else if(selection.Count > 1) // many items selected
+            else if (selection.Count > 1) // many items selected
             {
                 MessageBox.Show("You can report 1 email at a time.", "Error");
             }
@@ -112,46 +134,94 @@ namespace PhishingReporter
                     MailItem mailItem = (reportedItemType == "MailItem") ? selection[1] as MailItem : null; // If the selected item is an email
 
                     MailItem reportEmail = (MailItem)Globals.ThisAddIn.Application.CreateItem(OlItemType.olMailItem);
- 
+                    reportEmail.Attachments.Add(selection[1] as Object);
 
-                    senderMails.Add("fromMail", mailItem.SenderEmailAddress);
-                    senderMails.Add("userMail", GetCurrentUserInfos());
-                    senderMails.Add("userNote", note);
-                    senderMails.Add("htmlBody", mailItem.HTMLBody);
-
-                    using (var client1 = new HttpClient())
+                    try
                     {
-                        var endpoint = new Uri("https://m365.phishup.co/mail-provider-auth-service/microsoft365/user-mail-feedback");
 
-                        string json = JsonConvert.SerializeObject(senderMails);
-                        var payload = new StringContent(json, Encoding.UTF8, "application/json");
+                        reportEmail.To = Properties.Settings.Default.infosec_email;
+                        reportEmail.Subject = (reportedItemType == "MailItem") ? "[POTENTIAL PHISH] " + mailItem.Subject : "[POTENTIAL PHISH] " + reportedItemType; // If reporting email, include subject; otherwise, state the type of the reported item
 
-                        try
+                        // Get Email Headers
+                        if (reportedItemType == "MailItem")
                         {
-                           var response = client1.PostAsync(endpoint, payload).Result;
-                            response.EnsureSuccessStatusCode(); 
-                            string result = response.Content.ReadAsStringAsync().Result;
+                            reportedItemHeaders = mailItem.HeaderString();
+                        }
+                        else
+                        {
+                            reportedItemHeaders = "";
+                        }
+                         
+                        senderMails.Add("fromMail", mailItem.SenderEmailAddress == null ? "Draft" : mailItem.SenderEmailAddress);
+                        senderMails.Add("userMail", GetCurrentUserInfos());
+                        senderMails.Add("userNote", note);
+                        senderMails.Add("htmlBody", mailItem.HTMLBody);
+                        if(reportedItemHeaders != "")
+                        {
+                            senderMails.Add("header", reportedItemHeaders);
+                        }
 
-                            
-                            MessageBox.Show("Thank you for reporting.", "Thank you");
-                        }
-                        catch (HttpRequestException ex)
+                        List<Dictionary<string, string>> attachments = new List<Dictionary<string, string>>();
+                        Dictionary<string, string> attachment = new Dictionary<string, string>();
+                        if(mailItem.Attachments != null && mailItem.Attachments.Count > 0)
                         {
-                           
-                            MessageBox.Show($"HTTP request failed: {ex.Message}", "Error");
-                        }
-                        catch (TaskCanceledException ex)
+
+                        foreach (Attachment a in mailItem.Attachments)
                         {
-                            
-                            MessageBox.Show($"Task was canceled: {ex.Message}", "Error");
+
+                            var tempFilePath = Path.GetTempFileName();
+                            a.SaveAsFile(tempFilePath);
+
+                            // Read the content of the temporary file as bytes
+                            byte[] attachmentBytes = File.ReadAllBytes(tempFilePath);
+
+                            // Convert attachment content to Base64 string
+                            string base64String = Convert.ToBase64String(attachmentBytes);
+
+                            // Now you can use the base64String variable to send or process the attachment content
+                            Console.WriteLine("Attachment Content (Base64): " + base64String);
+
+                            // Delete the temporary file
+                            File.Delete(tempFilePath);
+
+                            attachment["filename"] = a.FileName;
+                            attachment["content"] = base64String;//base64 dosya içeriği
+                            attachments.Add(attachment);
                         }
-                        catch (System.Exception ex)
-                        {
-                            
-                            MessageBox.Show($"An error occurred: {ex.Message}", "Error");
+                            senderMails.Add("attachments", attachments);
                         }
+                       
+                        // Prepare the email body
+
+                        reportEmail.Body += JsonConvert.SerializeObject(senderMails);
+                            reportEmail.Body += "\n";
+                        MoveMailToSpamFolder(mailItem);
+
+                        reportEmail.Save();
+                        //reportEmail.Display(); // Helps in debugginng
+                      //  reportEmail.Send(); // Automatically send the email
+                       
+
+                        // Enable if you want a second popup for confirmation
+                        // MessageBox.Show("Thank you for reporting. We will review this report soon. - Information Security Team", "Thank you");
+
+
+                        // Delete the reported email
+                        //  mailItem.Delete();
+
                     }
-                  
+                    catch (System.Exception ex)
+                    {
+                        MessageBox.Show("There was an error! An automatic email was sent to the support to resolve the issue.", "Do not worry");
+
+                        MailItem errorEmail = (MailItem)Globals.ThisAddIn.Application.CreateItem(OlItemType.olMailItem);
+                        errorEmail.To = Properties.Settings.Default.support_email;
+                        errorEmail.Subject = "[Outlook Addin Error]";
+                        errorEmail.Body = ("Addin error message: " + ex);
+                        errorEmail.Save();
+                        //errorEmail.Display(); // Helps in debugginng
+                        errorEmail.Send(); // Automatically send the email
+                    }
                 }
                 else
                 {
@@ -160,7 +230,25 @@ namespace PhishingReporter
             }
         }
 
+        private void MoveMailToSpamFolder(MailItem mailItem)
+        {
+            Outlook.Application outlookApplication = Globals.ThisAddIn.Application;
+            Outlook.Selection selectedItems = outlookApplication.ActiveExplorer().Selection;
 
+            if (selectedItems != null && selectedItems.Count > 0)
+            {
+                Outlook.MAPIFolder spamFolder = outlookApplication.Session.GetDefaultFolder(Outlook.OlDefaultFolders.olFolderJunk);
+
+                foreach (object selectedItem in selectedItems)
+                {
+                    if (selectedItem is Outlook.MailItem)
+                    {
+                        Outlook.MailItem mailItem2 = selectedItem as Outlook.MailItem;
+                        mailItem2.Move(spamFolder);
+                    }
+                }
+            }          
+        }
 
         public String GetCurrentUserInfos()
         {
@@ -169,9 +257,7 @@ namespace PhishingReporter
             Outlook.AddressEntry addrEntry = Globals.ThisAddIn.Application.Session.CurrentUser.AddressEntry;
             if (addrEntry.Type == "EX")
             {
-                Outlook.ExchangeUser currentUser =
-                    Globals.ThisAddIn.Application.Session.CurrentUser.
-                    AddressEntry.GetExchangeUser();
+                Outlook.ExchangeUser currentUser = Globals.ThisAddIn.Application.Session.CurrentUser.AddressEntry.GetExchangeUser();
                 if (currentUser != null)
                 {
                     str += currentUser.PrimarySmtpAddress;
@@ -180,9 +266,67 @@ namespace PhishingReporter
             return str;
         }
 
+        public String GetURLsAndAttachmentsInfo(MailItem mailItem)
+        {
+            string urls_and_attachments = "---------- URLs and Attachments ----------";
+
+            var domainsInEmail = new List<string>();
+
+            var emailHTML = mailItem.HTMLBody;
+            var doc = new HtmlAgilityPack.HtmlDocument();
+            doc.LoadHtml(emailHTML);
+
+            // extracting all links
+            var urlsText = "";
+            var urlNodes = doc.DocumentNode.SelectNodes("//a[@href]");
+           
+
+            // Get domains
+            domainsInEmail = domainsInEmail.Distinct().ToList();
+            urls_and_attachments += "\n # of unique Domains: " + domainsInEmail.Count;
+            foreach (string item in domainsInEmail)
+            {
+                urls_and_attachments += "\n --> Domain: " + item.Replace(":", "[:]");
+            }
+
+            // Add Urls
+            
+
+            urls_and_attachments += "\n\n # of Attachments: " + mailItem.Attachments.Count;
+            foreach (Attachment a in mailItem.Attachments)
+            {
+                
+                var tempFilePath = Path.GetTempFileName();
+                a.SaveAsFile(tempFilePath);
+
+                // Read the content of the temporary file as bytes
+                byte[] attachmentBytes = File.ReadAllBytes(tempFilePath);
+
+                // Convert attachment content to Base64 string
+                string base64String = Convert.ToBase64String(attachmentBytes);
+
+                // Now you can use the base64String variable to send or process the attachment content
+                Console.WriteLine("Attachment Content (Base64): " + base64String);
+
+                // Delete the temporary file
+                File.Delete(tempFilePath);
+                urls_and_attachments += "\n --> Attachment: " + a.FileName + " "  + "\n" + "content base64:" + base64String;
+            }
+            return urls_and_attachments;
+        }
 
 
 
+        public String GetPluginDetails()
+        {
+            string pluginDetails = "---------- Report Phishing Plugin ----------";
+            pluginDetails += "\n - Version: " + Properties.Settings.Default.plugin_version;
+            pluginDetails += "\n - Usage: Report phishing emails to the Information Security Team.";
+            pluginDetails += "\n - Support: " + Properties.Settings.Default.support_email;
+
+            pluginDetails += "\n - Developer: Abdulla Albreiki (aalbraiki@hotmail.com)"; // You may delete this line if you like :)
+            return pluginDetails;
+        }
 
         #region IRibbonExtensibility Members
 
@@ -251,8 +395,6 @@ namespace PhishingReporter
         #endregion
     }
 
- 
-
     public static class MailItemExtensions
     {
         private const string HeaderRegex =
@@ -287,4 +429,3 @@ namespace PhishingReporter
 
     }
 }
- 
