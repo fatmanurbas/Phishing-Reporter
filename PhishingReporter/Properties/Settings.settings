@@ -3,7 +3,7 @@
   <Profiles />
   <Settings>
     <Setting Name="plugin_version" Type="System.String" Scope="User">
-      <Value Profile="(Default)">V1.1</Value>
+      <Value Profile="(Default)">V1.2</Value>
     </Setting>
     <Setting Name="suspecious_reports_counter" Type="System.Int32" Scope="User">
       <Value Profile="(Default)">0</Value>

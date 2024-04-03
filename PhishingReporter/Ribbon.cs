@@ -16,7 +16,6 @@ using Microsoft.Office.Interop.Outlook;
 using System.Text.RegularExpressions;
 using Outlook = Microsoft.Office.Interop.Outlook;
 using System.Security.Cryptography;
-using HtmlAgilityPack;
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using System.Text;
@@ -31,8 +30,10 @@ namespace PhishingReporter
     {
         private Office.IRibbonUI ribbon;
 
-        public Ribbon()
+        private Outlook.Application outlookApplication;
+        public Ribbon(Outlook.Application application)
         {
+            this.outlookApplication = application;
         }
 
         public Bitmap getGroup1Image(IRibbonControl control)
@@ -43,41 +44,37 @@ namespace PhishingReporter
         // Functions
         public void reportPhishing(Office.IRibbonControl control)
         {
-            string myDocument = "";
+            string userNote = "";
             string value = "Add a note";
-            if (Tmp.InputBox("Phishing", "Do you want to report this email as a potential phishing attempt?", ref value) == DialogResult.OK)
+            if (Tmp.InputBox("Report Mail", "Add some informations about this feedback. This field is optional", ref value) == DialogResult.OK)
             {
-                if(value != "Add a note")
-                {
-                    myDocument = value;
-                }
+                if (value != "Add a note")
+                    userNote = value;
+
                 try
                 {
                     // Fonksiyon çağrısı burada yapılır
-                    reportPhishingEmailToSecurityTeamAsync(control, myDocument);
+                    reportPhishingEmailToSecurityTeamAsync(control, userNote);
                 }
                 catch (System.Exception ex)
                 {
                     MessageBox.Show("An error occured with the function: " + ex.Message);
                 }
-               
-            }         
+
+            }
         }
 
         private void reportPhishingEmailToSecurityTeamAsync(IRibbonControl control, string note)
         {
-
-            Dictionary<string, string> senderMails = new Dictionary<string, string>();
-
-
+            Dictionary<string, object> senderMails = new Dictionary<string, object>();
             Selection selection = Globals.ThisAddIn.Application.ActiveExplorer().Selection;
             string reportedItemType = "NaN"; // email, contact, appointment ...etc
 
-            if(selection.Count < 1) // no item is selected
+            if (selection.Count < 1) // no item is selected
             {
                 MessageBox.Show("Select an email before reporting.", "Error");
             }
-            else if(selection.Count > 1) // many items selected
+            else if (selection.Count > 1) // many items selected
             {
                 MessageBox.Show("You can report 1 email at a time.", "Error");
             }
@@ -87,37 +84,38 @@ namespace PhishingReporter
                 {
                     // Identify the reported item type
                     if (selection[1] is Outlook.MeetingItem)
-                    {
                         reportedItemType = "MeetingItem";
-                    }
                     else if (selection[1] is Outlook.ContactItem)
-                    {
                         reportedItemType = "ContactItem";
-                    }
                     else if (selection[1] is Outlook.AppointmentItem)
-                    {
                         reportedItemType = "AppointmentItem";
-                    }
                     else if (selection[1] is Outlook.TaskItem)
-                    {
                         reportedItemType = "TaskItem";
-                    }
                     else if (selection[1] is Outlook.MailItem)
-                    {
                         reportedItemType = "MailItem";
-                    }
 
                     // Prepare Reported Email
                     Object mailItemObj = (selection[1] as object) as Object;
                     MailItem mailItem = (reportedItemType == "MailItem") ? selection[1] as MailItem : null; // If the selected item is an email
 
                     MailItem reportEmail = (MailItem)Globals.ThisAddIn.Application.CreateItem(OlItemType.olMailItem);
- 
 
-                    senderMails.Add("fromMail", mailItem.SenderEmailAddress);
+                    senderMails.Add("fromMail", mailItem.SenderEmailAddress == null ? "Draft" : mailItem.SenderEmailAddress);
                     senderMails.Add("userMail", GetCurrentUserInfos());
                     senderMails.Add("userNote", note);
                     senderMails.Add("htmlBody", mailItem.HTMLBody);
+
+                    List<Dictionary<string, string>> attachments = new List<Dictionary<string, string>>();
+                    Dictionary<string, string> attachment = new Dictionary<string, string>();
+
+                    //TODO: Fatma, eğer mail eki mevcutsa, her bir ek için attachments objesine attachment eklenecek (for ile tüm ekler dönülmeli)
+                    
+                    /*
+                    attachment["filename"] = "";
+                    attachment["content"] = "";//base64 dosya içeriği
+                    attachments.Add(attachment);
+                    senderMails.Add("attachments", attachments);
+                    */
 
                     using (var client1 = new HttpClient())
                     {
@@ -128,30 +126,27 @@ namespace PhishingReporter
 
                         try
                         {
-                           var response = client1.PostAsync(endpoint, payload).Result;
-                            response.EnsureSuccessStatusCode(); 
+                            var response = client1.PostAsync(endpoint, payload).Result;
+                            response.EnsureSuccessStatusCode();
                             string result = response.Content.ReadAsStringAsync().Result;
 
-                            
                             MessageBox.Show("Thank you for reporting.", "Thank you");
                         }
                         catch (HttpRequestException ex)
                         {
-                           
                             MessageBox.Show($"HTTP request failed: {ex.Message}", "Error");
                         }
                         catch (TaskCanceledException ex)
                         {
-                            
+
                             MessageBox.Show($"Task was canceled: {ex.Message}", "Error");
                         }
                         catch (System.Exception ex)
                         {
-                            
+
                             MessageBox.Show($"An error occurred: {ex.Message}", "Error");
                         }
                     }
-                  
                 }
                 else
                 {
@@ -160,8 +155,6 @@ namespace PhishingReporter
             }
         }
 
-
-
         public String GetCurrentUserInfos()
         {
             string str = "";
@@ -169,9 +162,7 @@ namespace PhishingReporter
             Outlook.AddressEntry addrEntry = Globals.ThisAddIn.Application.Session.CurrentUser.AddressEntry;
             if (addrEntry.Type == "EX")
             {
-                Outlook.ExchangeUser currentUser =
-                    Globals.ThisAddIn.Application.Session.CurrentUser.
-                    AddressEntry.GetExchangeUser();
+                Outlook.ExchangeUser currentUser = Globals.ThisAddIn.Application.Session.CurrentUser.AddressEntry.GetExchangeUser();
                 if (currentUser != null)
                 {
                     str += currentUser.PrimarySmtpAddress;
@@ -179,32 +170,42 @@ namespace PhishingReporter
             }
             return str;
         }
+        private void MoveMailToSpamFolder(MailItem mailItem)
+        {
+            Outlook.Application outlookApplication = Globals.ThisAddIn.Application;
+            Outlook.Selection selectedItems = outlookApplication.ActiveExplorer().Selection;
 
+            if (selectedItems != null && selectedItems.Count > 0)
+            {
+                Outlook.MAPIFolder spamFolder = outlookApplication.Session.GetDefaultFolder(Outlook.OlDefaultFolders.olFolderJunk);
 
-
+                foreach (object selectedItem in selectedItems)
+                {
+                    if (selectedItem is Outlook.MailItem)
+                    {
+                        Outlook.MailItem mailItem2 = selectedItem as Outlook.MailItem;
+                        mailItem2.Move(spamFolder);
+                    }
+                }
+            }
+        }
 
 
         #region IRibbonExtensibility Members
-
         public string GetCustomUI(string ribbonID)
         {
             return GetResourceText("PhishingReporter.Ribbon.xml");
         }
-
         #endregion
 
         #region Ribbon Callbacks
-        //Create callback methods here. For more information about adding callback methods, visit https://go.microsoft.com/fwlink/?LinkID=271226
-
         public void Ribbon_Load(Office.IRibbonUI ribbonUI)
         {
             this.ribbon = ribbonUI;
         }
-
         #endregion
 
         #region Helpers
-
         private static string GetResourceText(string resourceName)
         {
             Assembly asm = Assembly.GetExecutingAssembly();
@@ -224,34 +225,10 @@ namespace PhishingReporter
             }
             return null;
         }
-
-        static string CalculateMD5(string filename)
-        {
-            using (var md5 = MD5.Create())
-            {
-                using (var stream = File.OpenRead(filename))
-                {
-                    var hash = md5.ComputeHash(stream);
-                    return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
-                }
-            }
-        }
-        private string GetHashSha256(string filename)
-        {
-            using (FileStream stream = File.OpenRead(filename))
-            {
-                SHA256Managed sha = new SHA256Managed();
-                byte[] shaHash = sha.ComputeHash(stream);
-                string result = "";
-                foreach (byte b in shaHash) result += b.ToString("x2");
-                return result;
-            }
-        }
-
         #endregion
     }
 
- 
+
 
     public static class MailItemExtensions
     {
@@ -287,4 +264,3 @@ namespace PhishingReporter
 
     }
 }
- 

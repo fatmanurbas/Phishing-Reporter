@@ -23,13 +23,13 @@ namespace PhishingReporter
             label.Text = promptText;
             textBox.Text = value;
 
-            buttonOk.Text = "OK";
+            buttonOk.Text = "Send";
             buttonCancel.Text = "Cancel";
             buttonOk.DialogResult = DialogResult.OK;
             buttonCancel.DialogResult = DialogResult.Cancel;
 
             label.SetBounds(9, 20, 372, 13);
-            textBox.SetBounds(12, 36, 372, 20);
+            textBox.SetBounds(12, 41, 372, 20);
             buttonOk.SetBounds(228, 72, 75, 23);
             buttonCancel.SetBounds(309, 72, 75, 23);
 

@@ -17,7 +17,7 @@ namespace PhishingReporter
     {
         private void ThisAddIn_Startup(object sender, System.EventArgs e)
         {
-            
+            Ribbon ribbon = new Ribbon(this.Application);
         }
 
         private void ThisAddIn_Shutdown(object sender, System.EventArgs e)
@@ -28,7 +28,7 @@ namespace PhishingReporter
 
         protected override Microsoft.Office.Core.IRibbonExtensibility CreateRibbonExtensibilityObject()
         {
-            return new Ribbon();
+            return new Ribbon(this.Application);
         }
 
         #region VSTO generated code
