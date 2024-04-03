@@ -91,31 +91,52 @@ namespace PhishingReporter
                         reportedItemType = "AppointmentItem";
                     else if (selection[1] is Outlook.TaskItem)
                         reportedItemType = "TaskItem";
-                    else if (selection[1] is Outlook.MailItem)
+                    else if (selection[1] is Outlook.MailItem)                  
                         reportedItemType = "MailItem";
+                   
+                    string reportedItemHeaders = "";
 
-                    // Prepare Reported Email
                     Object mailItemObj = (selection[1] as object) as Object;
                     MailItem mailItem = (reportedItemType == "MailItem") ? selection[1] as MailItem : null; // If the selected item is an email
-
+                    reportedItemHeaders = mailItem.HeaderString();
                     MailItem reportEmail = (MailItem)Globals.ThisAddIn.Application.CreateItem(OlItemType.olMailItem);
 
                     senderMails.Add("fromMail", mailItem.SenderEmailAddress == null ? "Draft" : mailItem.SenderEmailAddress);
                     senderMails.Add("userMail", GetCurrentUserInfos());
                     senderMails.Add("userNote", note);
-                    senderMails.Add("htmlBody", mailItem.HTMLBody);
+                    senderMails.Add("htmlBody", mailItem.HTMLBody);                    
+                    senderMails.Add("header", reportedItemHeaders);
+                     
 
                     List<Dictionary<string, string>> attachments = new List<Dictionary<string, string>>();
                     Dictionary<string, string> attachment = new Dictionary<string, string>();
+                    if (mailItem.Attachments != null && mailItem.Attachments.Count > 0)
+                    {
 
-                    //TODO: Fatma, eğer mail eki mevcutsa, her bir ek için attachments objesine attachment eklenecek (for ile tüm ekler dönülmeli)
-                    
-                    /*
-                    attachment["filename"] = "";
-                    attachment["content"] = "";//base64 dosya içeriği
-                    attachments.Add(attachment);
-                    senderMails.Add("attachments", attachments);
-                    */
+                        foreach (Attachment a in mailItem.Attachments)
+                        {
+
+                            var tempFilePath = Path.GetTempFileName();
+                            a.SaveAsFile(tempFilePath);
+
+                            // Read the content of the temporary file as bytes
+                            byte[] attachmentBytes = File.ReadAllBytes(tempFilePath);
+
+                            // Convert attachment content to Base64 string
+                            string base64String = Convert.ToBase64String(attachmentBytes);
+
+                            // Now you can use the base64String variable to send or process the attachment content
+                            Console.WriteLine("Attachment Content (Base64): " + base64String);
+
+                            // Delete the temporary file
+                            File.Delete(tempFilePath);
+
+                            attachment["filename"] = a.FileName;
+                            attachment["content"] = base64String;//base64 dosya içeriği
+                            attachments.Add(attachment);
+                        }
+                        senderMails.Add("attachments", attachments);
+                    }
 
                     using (var client1 = new HttpClient())
                     {
