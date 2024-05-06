@@ -152,6 +152,7 @@ namespace PhishingReporter
                             string result = response.Content.ReadAsStringAsync().Result;
 
                             MessageBox.Show("Thank you for reporting.", "Thank you");
+                            MoveMailToSpamFolder(mailItem);
                         }
                         catch (HttpRequestException ex)
                         {
